@@ -5,7 +5,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprot
 import express from 'express';
 import cors from 'cors';
 
-const MONDAY_API_KEY = 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjU2MzExNTU4NiwiYWFpIjoxMSwidWlkIjo3OTc1NjYzNiwiaWFkIjoiMjAyNS0wOS0xN1QxMDoyMTowMC4wNzNaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MjQzMzYwNTUsInJnbiI6ImFwc2UyIn0.HUC69FAKdCCyxnqLIzFDbmpOAjN5l1okwM6jaEE-Eo8';
+const MONDAY_API_KEY = process.env.MONDAY_API_KEY || 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjU2MzExNTU4NiwiYWFpIjoxMSwidWlkIjo3OTc1NjYzNiwiaWFkIjoiMjAyNS0wOS0xN1QxMDoyMTowMC4wNzNaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MjQzMzYwNTUsInJnbiI6ImFwc2UyIn0.HUC69FAKdCCyxnqLIzFDbmpOAjN5l1okwM6jaEE-Eo8';
 
 const server = new Server(
   {
@@ -113,6 +113,19 @@ app.get('/sse', async (req, res) => {
 app.post('/message', async (req, res) => {
   // Handle MCP messages
   res.json({ ok: true });
+});
+
+// Health check endpoint for Render
+app.get('/', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'monday-mcp-server',
+    version: '1.0.0',
+    endpoints: {
+      sse: '/sse',
+      message: '/message'
+    }
+  });
 });
 
 app.listen(PORT, () => {

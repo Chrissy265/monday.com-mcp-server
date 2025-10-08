@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: monday-mcp-server
+    runtime: node
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: MONDAY_API_KEY
+        sync: false
+    healthCheckPath: /
