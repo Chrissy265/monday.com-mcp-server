@@ -1,0 +1,8 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.19.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  }
+}
