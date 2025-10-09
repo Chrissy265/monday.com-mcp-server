@@ -2,7 +2,6 @@
 import 'dotenv/config';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
 import cors from 'cors';
 
@@ -10,7 +9,7 @@ const MONDAY_API_KEY = process.env.striling_monday_api;
 
 const server = new Server(
   {
-    name: 'monday-mcp-server',
+    name: 'monday_query',
     version: '1.0.0',
   },
   {
@@ -21,18 +20,18 @@ const server = new Server(
 );
 
 // Define tools
-server.setRequestHandler(ListToolsRequestSchema, async () => {
+server.setRequestHandler('tools/list', async () => {
   return {
     tools: [
       {
-        name: 'query_monday',
-        description: 'Query Monday.com boards, tasks, and users using GraphQL. Use this to find task owners, check statuses, list boards, and get task details.',
+        name: 'monday_query',
+        description: 'Query Monday.com boards, tasks, and users using GraphQL',
         inputSchema: {
           type: 'object',
           properties: {
             graphqlQuery: {
               type: 'string',
-              description: 'Complete GraphQL query to execute against Monday.com API',
+              description: 'Complete GraphQL query to execute',
             },
           },
           required: ['graphqlQuery'],
@@ -43,8 +42,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 // Handle tool calls
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === 'query_monday') {
+server.setRequestHandler('tools/call', async (request) => {
+  if (request.params.name === 'monday_query') {
     const { graphqlQuery } = request.params.arguments;
 
     try {
@@ -59,23 +58,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const data = await response.json();
 
-      if (data.errors) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `GraphQL Error: ${JSON.stringify(data.errors, null, 2)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(data.data, null, 2),
+            text: JSON.stringify(data, null, 2),
           },
         ],
       };
@@ -95,41 +82,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   throw new Error(`Unknown tool: ${request.params.name}`);
 });
 
-// Create Express app for SSE
+// Express app
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 10000;
 
+// Health check
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'Monday.com MCP Server' });
+});
+
+// SSE endpoint
 app.get('/sse', async (req, res) => {
-  console.log('SSE connection received');
-  
+  console.log('SSE connection received from:', req.headers['user-agent']);
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
   const transport = new SSEServerTransport('/message', res);
   await server.connect(transport);
-  
+
   console.log('MCP server connected via SSE');
 });
 
+// Message endpoint
 app.post('/message', async (req, res) => {
-  // Handle MCP messages
+  console.log('Message received:', req.body);
   res.json({ ok: true });
 });
 
-// Health check endpoint for Render
-app.get('/', (req, res) => {
-  res.json({
-    status: 'healthy',
-    service: 'monday-mcp-server',
-    version: '1.0.0',
-    endpoints: {
-      sse: '/sse',
-      message: '/message'
-    }
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`Monday.com MCP server running on http://localhost:${PORT}`);
-  console.log(`SSE endpoint: http://localhost:${PORT}/sse`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Monday.com MCP server running on port ${PORT}`);
+  console.log(`SSE endpoint: http://0.0.0.0:${PORT}/sse`);
 });
