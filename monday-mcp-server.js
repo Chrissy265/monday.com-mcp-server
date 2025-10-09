@@ -1,11 +1,9 @@
-#!/usr/bin/env node
-import 'dotenv/config';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import express from 'express';
 import cors from 'cors';
 
-const MONDAY_API_KEY = process.env.striling_monday_api;
+const MONDAY_API_KEY = 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjU2MzExNTU4NiwiYWFpIjoxMSwidWlkIjo3OTc1NjYzNiwiaWFkIjoiMjAyNS0wOS0xN1QxMDoyMTowMC4wNzNaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MjQzMzYwNTUsInJnbiI6ImFwc2UyIn0.HUC69FAKdCCyxnqLIzFDbmpOAjN5l1okwM6jaEE-Eo8';
 
 // Create Express app for HTTP interface
 const app = express();
@@ -16,8 +14,8 @@ const PORT = process.env.PORT || 10000;
 
 // Simple health check
 app.get('/', (req, res) => {
-  res.json({
-    status: 'ok',
+  res.json({ 
+    status: 'ok', 
     message: 'Monday.com MCP Server',
     endpoints: {
       health: '/',
@@ -30,7 +28,7 @@ app.get('/', (req, res) => {
 // Direct query endpoint (bypass MCP for testing)
 app.post('/query', async (req, res) => {
   const { query } = req.body;
-
+  
   if (!query) {
     return res.status(400).json({ error: 'Query is required' });
   }
@@ -55,7 +53,7 @@ app.post('/query', async (req, res) => {
 // SSE endpoint for MCP
 app.get('/sse', (req, res) => {
   console.log('SSE connection requested');
-
+  
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -80,7 +78,7 @@ app.get('/sse', (req, res) => {
 // Handle MCP messages
 app.post('/message', async (req, res) => {
   console.log('MCP message received:', JSON.stringify(req.body, null, 2));
-
+  
   const { method, params } = req.body;
 
   try {
@@ -131,9 +129,9 @@ app.post('/message', async (req, res) => {
 
     res.json({ error: 'Unknown method' });
   } catch (error) {
-    res.status(500).json({
+    res.status(500).json({ 
       error: error.message,
-      isError: true
+      isError: true 
     });
   }
 });
