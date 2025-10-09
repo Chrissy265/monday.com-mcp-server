@@ -4,43 +4,72 @@ import cors from 'cors';
 const MONDAY_API_KEY = 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjU2MzExNTU4NiwiYWFpIjoxMSwidWlkIjo3OTc1NjYzNiwiaWFkIjoiMjAyNS0wOS0xN1QxMDoyMTowMC4wNzNaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MjQzMzYwNTUsInJnbiI6ImFwc2UyIn0.HUC69FAKdCCyxnqLIzFDbmpOAjN5l1okwM6jaEE-Eo8';
 
 const app = express();
-app.use(cors());
+
+// CRITICAL: Enhanced CORS for n8n
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true
+}));
+
 app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 
+// OPTIONS handler for preflight
+app.options('*', cors());
+
 // Store active SSE connections
 const connections = new Map();
 
+// Enhanced logging
+app.use((req, res, next) => {
+  console.log(`🔵 ${req.method} ${req.path} from ${req.ip}`);
+  console.log(`   Headers:`, Object.keys(req.headers).join(', '));
+  next();
+});
+
 // Health check
 app.get('/', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     protocol: 'MCP',
     version: '2024-11-05',
     capabilities: {
       tools: {}
-    }
+    },
+    timestamp: new Date().toISOString()
   });
 });
 
-// SSE endpoint - proper MCP protocol
+// SSE endpoint with detailed logging
 app.get('/sse', (req, res) => {
-  console.log('📡 New SSE connection established');
+  console.log('═══════════════════════════════════════');
+  console.log('📡 SSE CONNECTION ATTEMPT');
+  console.log('   Time:', new Date().toISOString());
+  console.log('   IP:', req.ip);
+  console.log('   User-Agent:', req.headers['user-agent']);
+  console.log('   Origin:', req.headers.origin || 'none');
+  console.log('═══════════════════════════════════════');
 
-  // Set SSE headers
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform',
-    'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no',
-    'Access-Control-Allow-Origin': '*'
-  });
+  // Set headers immediately
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  res.flushHeaders(); // Flush headers immediately
 
   const connectionId = Date.now().toString();
   connections.set(connectionId, res);
 
-  // Send endpoint message (MCP protocol requirement)
+  console.log(`✅ SSE connection ${connectionId} established`);
+
+  // Send endpoint message
   const endpointMessage = {
     jsonrpc: '2.0',
     method: 'endpoint',
@@ -48,29 +77,52 @@ app.get('/sse', (req, res) => {
       endpoint: '/message'
     }
   };
-  res.write(`data: ${JSON.stringify(endpointMessage)}\n\n`);
+
+  try {
+    res.write(`data: ${JSON.stringify(endpointMessage)}\n\n`);
+    console.log(`📤 Sent endpoint message to ${connectionId}`);
+  } catch (error) {
+    console.error(`❌ Error sending endpoint message:`, error);
+  }
 
   // Keep-alive ping
   const keepAlive = setInterval(() => {
-    res.write(':ping\n\n');
+    try {
+      res.write(':ping\n\n');
+      console.log(`💓 Ping sent to ${connectionId}`);
+    } catch (error) {
+      console.error(`❌ Ping failed for ${connectionId}:`, error);
+      clearInterval(keepAlive);
+    }
   }, 15000);
 
   // Cleanup on disconnect
   req.on('close', () => {
-    console.log('🔌 SSE connection closed');
+    console.log(`🔌 SSE connection ${connectionId} closed`);
+    clearInterval(keepAlive);
+    connections.delete(connectionId);
+  });
+
+  req.on('error', (error) => {
+    console.error(`❌ SSE connection ${connectionId} error:`, error);
     clearInterval(keepAlive);
     connections.delete(connectionId);
   });
 });
 
-// Message endpoint - handles MCP JSON-RPC messages
+// Message endpoint with detailed logging
 app.post('/message', async (req, res) => {
+  console.log('═══════════════════════════════════════');
+  console.log('📨 MESSAGE RECEIVED');
+  console.log('   Time:', new Date().toISOString());
+  console.log('   Body:', JSON.stringify(req.body, null, 2));
+  console.log('═══════════════════════════════════════');
+
   const message = req.body;
-  console.log('📨 Received message:', JSON.stringify(message, null, 2));
 
   try {
-    // Handle JSON-RPC 2.0 messages
     if (!message.jsonrpc || message.jsonrpc !== '2.0') {
+      console.log('❌ Invalid JSON-RPC format');
       return res.json({
         jsonrpc: '2.0',
         error: {
@@ -82,10 +134,12 @@ app.post('/message', async (req, res) => {
     }
 
     const { method, params, id } = message;
+    console.log(`🎯 Method: ${method}`);
 
     // Handle initialize
     if (method === 'initialize') {
-      return res.json({
+      console.log('🚀 Handling initialize');
+      const response = {
         jsonrpc: '2.0',
         result: {
           protocolVersion: '2024-11-05',
@@ -99,12 +153,14 @@ app.post('/message', async (req, res) => {
           }
         },
         id
-      });
+      };
+      console.log('📤 Sending initialize response');
+      return res.json(response);
     }
 
     // Handle initialized notification
     if (method === 'notifications/initialized') {
-      console.log('✅ Client initialized');
+      console.log('✅ Client initialized notification received');
       return res.json({
         jsonrpc: '2.0',
         result: {},
@@ -114,19 +170,20 @@ app.post('/message', async (req, res) => {
 
     // Handle tools/list
     if (method === 'tools/list') {
-      return res.json({
+      console.log('📋 Handling tools/list');
+      const response = {
         jsonrpc: '2.0',
         result: {
           tools: [
             {
               name: 'monday_query',
-              description: 'Query Monday.com boards and tasks using GraphQL. Use this to find task owners, check statuses, and get board information.',
+              description: 'Query Monday.com boards and tasks using GraphQL',
               inputSchema: {
                 type: 'object',
                 properties: {
                   graphqlQuery: {
                     type: 'string',
-                    description: 'Complete GraphQL query to execute against Monday.com API'
+                    description: 'Complete GraphQL query to execute'
                   }
                 },
                 required: ['graphqlQuery']
@@ -135,17 +192,22 @@ app.post('/message', async (req, res) => {
           ]
         },
         id
-      });
+      };
+      console.log('📤 Sending tools list');
+      return res.json(response);
     }
 
     // Handle tools/call
     if (method === 'tools/call') {
+      console.log('🔧 Handling tools/call');
       const { name, arguments: args } = params;
+      console.log(`   Tool: ${name}`);
+      console.log(`   Args:`, JSON.stringify(args, null, 2));
 
       if (name === 'monday_query') {
         const { graphqlQuery } = args;
 
-        console.log('🚀 Executing Monday.com query:', graphqlQuery);
+        console.log('🚀 Executing Monday.com query...');
 
         try {
           const response = await fetch('https://api.monday.com/v2', {
@@ -160,8 +222,9 @@ app.post('/message', async (req, res) => {
           const data = await response.json();
 
           console.log('✅ Monday.com response received');
+          console.log('   Status:', response.status);
 
-          return res.json({
+          const result = {
             jsonrpc: '2.0',
             result: {
               content: [
@@ -172,10 +235,13 @@ app.post('/message', async (req, res) => {
               ]
             },
             id
-          });
+          };
+
+          console.log('📤 Sending Monday.com results');
+          return res.json(result);
         } catch (error) {
           console.error('❌ Monday.com API error:', error);
-          
+
           return res.json({
             jsonrpc: '2.0',
             error: {
@@ -187,7 +253,7 @@ app.post('/message', async (req, res) => {
         }
       }
 
-      // Unknown tool
+      console.log(`❌ Unknown tool: ${name}`);
       return res.json({
         jsonrpc: '2.0',
         error: {
@@ -200,6 +266,7 @@ app.post('/message', async (req, res) => {
 
     // Handle ping
     if (method === 'ping') {
+      console.log('🏓 Handling ping');
       return res.json({
         jsonrpc: '2.0',
         result: {},
@@ -207,7 +274,7 @@ app.post('/message', async (req, res) => {
       });
     }
 
-    // Method not found
+    console.log(`❌ Method not found: ${method}`);
     return res.json({
       jsonrpc: '2.0',
       error: {
@@ -219,7 +286,7 @@ app.post('/message', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error handling message:', error);
-    
+
     return res.json({
       jsonrpc: '2.0',
       error: {
@@ -239,5 +306,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔗 SSE Endpoint: /sse`);
   console.log(`💬 Message Endpoint: /message`);
   console.log(`🏥 Health Check: /`);
+  console.log(`⏰ Started: ${new Date().toISOString()}`);
   console.log('═══════════════════════════════════════');
 });
